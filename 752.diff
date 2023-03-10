@@ -1,0 +1,294 @@
+diff --git a/android/app/build.gradle b/android/app/build.gradle
+index 2498793b00a3662478cb040460a9b04e83c96aee..14e82942b0e1e7b960174fd7b769f4867062ff84 100644
+--- a/android/app/build.gradle
++++ b/android/app/build.gradle
+@@ -95,6 +95,9 @@ apply from: "../../node_modules/react-native/react.gradle"
+ apply from: "../../node_modules/react-native-code-push/android/codepush.gradle"
+ apply from: "../../node_modules/react-native-unimodules/gradle.groovy"
+ 
++Project background_geolocation = project(':react-native-background-geolocation')
++apply from: "${background_geolocation.projectDir}/app.gradle"
++
+ /**
+  * Set this to true to create two separate APKs instead of one:
+  *   - An APK that only works on ARM devices
+@@ -264,6 +267,11 @@ dependencies {
+ 
+     implementation 'com.newrelic.agent.android:android-agent:6.4.0'
+     implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.0.0"
++    implementation ("androidx.appcompat:appcompat:1.3.1") {
++        version {
++            strictly '1.3.1'
++        }
++    }
+ 
+     debugImplementation("com.facebook.flipper:flipper:${FLIPPER_VERSION}") {
+         exclude group:'com.facebook.fbjni'
+diff --git a/android/app/production/release/app-production-release.apk b/android/app/production/release/app-production-release.apk
+deleted file mode 100644
+index 734ea7dca084190e08bfc0c9ad4e1ecefb1017e2..0000000000000000000000000000000000000000
+Binary files a/android/app/production/release/app-production-release.apk and /dev/null differ
+diff --git a/android/app/production/release/output-metadata.json b/android/app/production/release/output-metadata.json
+deleted file mode 100644
+index 8c52d9572addd193bdf8fb4059022657ed6141f9..0000000000000000000000000000000000000000
+--- a/android/app/production/release/output-metadata.json
++++ /dev/null
+@@ -1,18 +0,0 @@
+-{
+-  "version": 2,
+-  "artifactType": {
+-    "type": "APK",
+-    "kind": "Directory"
+-  },
+-  "applicationId": "com.cencosud.reg.pickingapp",
+-  "variantName": "productionRelease",
+-  "elements": [
+-    {
+-      "type": "SINGLE",
+-      "filters": [],
+-      "versionCode": 5,
+-      "versionName": "1.0.0",
+-      "outputFile": "app-production-release.apk"
+-    }
+-  ]
+-}
+\ No newline at end of file
+diff --git a/android/app/src/main/AndroidManifest.xml b/android/app/src/main/AndroidManifest.xml
+index def017eed2bdaa6e45f0123778781e1c0821d9a8..46a13e39635a0dc3fc979035a67532c9af1a4433 100644
+--- a/android/app/src/main/AndroidManifest.xml
++++ b/android/app/src/main/AndroidManifest.xml
+@@ -34,7 +34,8 @@
+             android:label="@string/app_name"
+             android:launchMode="singleTask"
+             android:screenOrientation="portrait"
+-            android:windowSoftInputMode="adjustResize">
++            android:windowSoftInputMode="adjustResize"
++            android:exported="true">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+                 <category android:name="android.intent.category.LAUNCHER" />
+@@ -50,7 +51,7 @@
+         <meta-data android:name="com.supersami.foregroundservice.notification_color" android:resource="@color/orange"/>
+         <service android:name="com.supersami.foregroundservice.ForegroundService"></service>
+         <service android:name="com.supersami.foregroundservice.ForegroundServiceTask"></service>
+-
++        <meta-data android:name="com.transistorsoft.locationmanager.license" android:value="YOUR_LICENCE_KEY_HERE" />
+     </application>
+ 
+ </manifest>
+diff --git a/android/build.gradle b/android/build.gradle
+index b524a0032ba29a4d6d80fabdf61692fb3afd1d04..30903c4153a7f6232b9f11b76a0ec306d23502af 100644
+--- a/android/build.gradle
++++ b/android/build.gradle
+@@ -4,8 +4,8 @@ buildscript {
+     ext {
+         buildToolsVersion = "30.0.2"
+         minSdkVersion = 21
+-        compileSdkVersion = 30
+-        targetSdkVersion = 30
++        compileSdkVersion = 31
++        targetSdkVersion = 31
+         ndkVersion = "21.4.7075529"
+         supportLibVersion = "28.0.0"
+         googlePlayServicesVersion = "17.0.0"
+@@ -37,6 +37,14 @@ allprojects {
+             // Android JSC is installed from npm
+             url("$rootDir/../node_modules/jsc-android/dist")
+         }
++        maven {
++            // Required for react-native-background-geolocation
++            url("${project(':react-native-background-geolocation').projectDir}/libs")
++        }
++        maven {
++            // Required for react-native-background-fetch
++            url("${project(':react-native-background-fetch').projectDir}/libs")
++        }
+ 
+         google()
+         maven { url 'https://www.jitpack.io' }
+diff --git a/package.json b/package.json
+index 982f5513a69d2f7f006da572bac276ad25b90539..094c4dba40a3ebcaad0ea450eb4658177a346e3d 100644
+--- a/package.json
++++ b/package.json
+@@ -73,6 +73,8 @@
+ 		"react-dom": "^17.0.2",
+ 		"react-i18next": "^11.18.4",
+ 		"react-native": "0.65.3",
++		"react-native-background-fetch": "^4.1.8",
++		"react-native-background-geolocation": "^4.10.0",
+ 		"react-native-background-timer": "^2.4.1",
+ 		"react-native-call-detection": "^1.9.0",
+ 		"react-native-code-push": "^7.1.0",
+diff --git a/src/hook/useLocation/index.tsx b/src/hook/useLocation/index.tsx
+index b4091fd8f3e3569ae80f99875ad13bd603676604..ad8362bdda0cce1987aa5c2f169b726c93e7dedf 100644
+--- a/src/hook/useLocation/index.tsx
++++ b/src/hook/useLocation/index.tsx
+@@ -1,15 +1,19 @@
+ import Geolocation from 'react-native-geolocation-service'
++import BackgroundGeolocation, {
++	Subscription,
++} from 'react-native-background-geolocation'
++
+ import { useEffect, useRef, useState } from 'react'
+ import { Location } from '../../types/driverTypes'
+ import { useStores } from '../../stores/index'
+ 
+-type typeCallbackWatchPosition = (location: Location) => void
+-
+ const MAP_ZOOM = 0.09
++const DISTANCE_TRACK_MTS = 10
+ 
+ export default () => {
+-	const { configStore } = useStores()
+ 	const [hasLocation, setHasLocation] = useState(false)
++	const { homeStore } = useStores()
++
+ 	const [initialPosition, setInitialPosition] = useState<Location>({
+ 		latitude: 10.600311,
+ 		longitude: -71.634593,
+@@ -23,18 +27,11 @@ export default () => {
+ 		longitudeDelta: 0,
+ 	})
+ 	const [routeLines, setRouteLines] = useState<Location[]>([])
+-	const watchId = useRef<number>()
+ 	const isMounted = useRef<boolean>(true)
+-	const interval = 10000
+ 
+ 	useEffect(() => {
+ 		isMounted.current = true
+-		return () => {
+-			isMounted.current = false
+-		}
+-	}, [])
+ 
+-	useEffect(() => {
+ 		getCurrentLocation().then(location => {
+ 			if (!isMounted.current) return
+ 			setInitialPosition(location)
+@@ -42,6 +39,40 @@ export default () => {
+ 			setRouteLines(routes => [...routes, location])
+ 			setHasLocation(true)
+ 		})
++
++		const onLocation: Subscription = BackgroundGeolocation.onLocation(
++			({ coords }) => {
++				if (coords) {
++					const location: Location = {
++						latitude: coords.latitude,
++						longitude: coords.longitude,
++						latitudeDelta: MAP_ZOOM,
++						longitudeDelta: MAP_ZOOM,
++					}
++
++					setUserCurrentPosition(location)
++					setRouteLines(routes => [...routes, location])
++					homeStore.setLocation(location)
++				}
++			}
++		)
++
++		BackgroundGeolocation.ready({
++			desiredAccuracy: BackgroundGeolocation.DESIRED_ACCURACY_HIGH,
++			distanceFilter: DISTANCE_TRACK_MTS,
++			stopTimeout: 5,
++			debug: true,
++			logLevel: BackgroundGeolocation.LOG_LEVEL_VERBOSE,
++			stopOnTerminate: false,
++			startOnBoot: true,
++		})
++			.then(state => {})
++			.catch(error => {})
++
++		return () => {
++			onLocation.remove()
++			isMounted.current = false
++		}
+ 	}, [])
+ 
+ 	const getCurrentLocation = (): Promise<Location> => {
+@@ -63,44 +94,12 @@ export default () => {
+ 		})
+ 	}
+ 
+-	const watchUserLocation = async (
+-		callback: typeCallbackWatchPosition = (location: Location) => {}
+-	) => {
+-		const options: Geolocation.GeoWatchOptions = {
+-			accuracy: {
+-				android: 'high',
+-				ios: 'best',
+-			},
+-			enableHighAccuracy: true,
+-			distanceFilter: 0,
+-			interval: interval,
+-			fastestInterval: interval,
+-		}
+-		watchId.current = await Geolocation.watchPosition(
+-			({ coords }) => {
+-				if (!isMounted.current) return
+-				const location: Location = {
+-					latitude: coords.latitude,
+-					longitude: coords.longitude,
+-					latitudeDelta: MAP_ZOOM,
+-					longitudeDelta: MAP_ZOOM,
+-				}
+-				setUserCurrentPosition(location)
+-				setRouteLines(routes => [...routes, location])
+-				callback(location)
+-			},
+-			err => err,
+-			options
+-		)
++	const watchUserLocation = () => {
++		BackgroundGeolocation.start()
+ 	}
++
+ 	const stopWatchUserLocation = () => {
+-		if (watchId.current !== undefined) {
+-			Geolocation.clearWatch(watchId.current)
+-			watchId.current = undefined
+-		}
+-	}
+-	const sendTrackLocation = async () => {
+-		//await sendLocation(routeLines)
++		BackgroundGeolocation.stop()
+ 	}
+ 
+ 	return {
+@@ -111,6 +110,5 @@ export default () => {
+ 		userCurrentPosition,
+ 		stopWatchUserLocation,
+ 		routeLines,
+-		sendTrackLocation,
+ 	}
+ }
+diff --git a/src/screens/shipping/home/index.tsx b/src/screens/shipping/home/index.tsx
+index 8142cad1d8ac010b22ae9d71cae3a6f0acb7d724..5e4dce83d0f5d5991fc4b74ed29b87db20c049cb 100644
+--- a/src/screens/shipping/home/index.tsx
++++ b/src/screens/shipping/home/index.tsx
+@@ -126,9 +126,7 @@ export default observer(({ navigation }: Props) => {
+ 
+ 	useEffect(() => {
+ 		if (permissions == 'granted') {
+-			watchUserLocation((location: Location) => {
+-				homeStore.setLocation(location)
+-			})
++			watchUserLocation()
+ 			return () => stopWatchUserLocation()
+ 		}
+ 	}, [permissions])
+diff --git a/src/stores/common/homeStore.ts b/src/stores/common/homeStore.ts
+index e845d359dcb451950b9b3496f88d2fdd27984b2f..c383f7584caef697d6847605d63116338966f42c 100644
+--- a/src/stores/common/homeStore.ts
++++ b/src/stores/common/homeStore.ts
+@@ -153,7 +153,9 @@ class HomeStore {
+ 	}
+ 
+ 	*setLocation(location: Location) {
+-		this.currentLocation = location
++		if (location) {
++			this.currentLocation = location
++		}
+ 	}
+ 
+ 	*getLocation(
